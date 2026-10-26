@@ -30,7 +30,7 @@ test:
 # darwin-специфичные тесты (birthtime): собираем в контейнере, запускаем на хосте
 test-darwin:
 	$(DOCKER_GO) $(DARWIN_ENV) go test -c -o dist/meta-darwin.test ./internal/meta
-	./dist/meta-darwin.test -test.v -test.run Darwin
+	./dist/meta-darwin.test -test.v
 
 tidy:
 	$(DOCKER_GO) go mod tidy
