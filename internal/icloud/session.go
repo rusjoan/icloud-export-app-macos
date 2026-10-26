@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -350,19 +351,63 @@ func (s *Session) accountLogin(ctx context.Context) error {
 }
 
 func (s *Session) requestCodePush(ctx context.Context) {
-	// GET /appleauth/auth инициирует отправку кода на доверенные устройства
-	// и возвращает список номеров для SMS
+	// GET /appleauth/auth возвращает способы подтверждения: доверенные устройства и номера для SMS
 	resp, err := s.authCall(ctx, http.MethodGet, "", nil, nil)
 	if err != nil || resp.status >= 300 {
 		return
 	}
-	var body struct {
-		TrustedPhoneNumbers []Phone `json:"trustedPhoneNumbers"`
+	phones, summary := parseAuthOptions(resp.body)
+	Logf("2fa options: %s", summary)
+	s.phones = phones
+	s.publish()
+}
+
+// parseAuthOptions достаёт номера для SMS (в двух известных форматах ответа) и
+// краткое описание ответа для журнала — только имена полей и количества, без номеров.
+func parseAuthOptions(body []byte) ([]Phone, string) {
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(body, &raw) != nil {
+		return nil, fmt.Sprintf("не JSON (%d байт)", len(body))
 	}
-	if json.Unmarshal(resp.body, &body) == nil {
-		s.phones = body.TrustedPhoneNumbers
+	var opts struct {
+		TrustedPhoneNumbers     []Phone `json:"trustedPhoneNumbers"`
+		PhoneNumberVerification struct {
+			TrustedPhoneNumbers []Phone `json:"trustedPhoneNumbers"`
+		} `json:"phoneNumberVerification"`
+		NoTrustedDevices   bool   `json:"noTrustedDevices"`
+		AuthenticationType string `json:"authenticationType"`
+	}
+	_ = json.Unmarshal(body, &opts)
+	phones := opts.TrustedPhoneNumbers
+	if len(phones) == 0 {
+		phones = opts.PhoneNumberVerification.TrustedPhoneNumbers
+	}
+	keys := make([]string, 0, len(raw))
+	for k := range raw {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return phones, fmt.Sprintf("type=%s noTrustedDevices=%v phones=%d keys=%v",
+		opts.AuthenticationType, opts.NoTrustedDevices, len(phones), keys)
+}
+
+// ResendCode просит Apple ещё раз отправить код на доверенные устройства.
+func (s *Session) ResendCode(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	resp, err := s.authCall(ctx, http.MethodPut, "/verify/trusteddevice/securitycode", nil, nil)
+	if err != nil {
+		return err
+	}
+	if resp.status >= 300 {
+		return authFailure(resp, "Apple не отправила код")
+	}
+	if phones, summary := parseAuthOptions(resp.body); len(phones) > 0 {
+		Logf("2fa resend: %s", summary)
+		s.phones = phones
 		s.publish()
 	}
+	return nil
 }
 
 func (s *Session) setupCall(ctx context.Context, path string, body any) (*Account, error) {

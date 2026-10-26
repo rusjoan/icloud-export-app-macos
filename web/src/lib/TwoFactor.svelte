@@ -23,6 +23,22 @@
     }
   }
 
+  async function resend() {
+    busy = true
+    error = ''
+    try {
+      await post('/api/2fa/resend')
+      phoneId = 0
+      info = ''
+      sent = true
+    } catch (err) {
+      error = err.message
+    } finally {
+      busy = false
+    }
+  }
+  let sent = $state(false)
+
   async function sms(id) {
     busy = true
     error = ''
@@ -58,6 +74,14 @@
             Подтвердить
           </button>
         </form>
+
+        <button class="btn btn-link btn-sm mt-2" disabled={busy} onclick={resend}>
+          <i class="bi bi-arrow-repeat me-1"></i>Отправить код ещё раз
+        </button>
+        {#if sent}<div class="small text-success">Запрос отправлен — код должен прийти на устройства в течение минуты</div>{/if}
+        <div class="small text-body-secondary mt-2">
+          На iPhone сначала появится запрос «Вход с Apple ID» с картой — нажмите «Разрешить», затем покажется код.
+        </div>
 
         {#if list.length}
           <hr />

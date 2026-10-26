@@ -197,3 +197,17 @@ func TestRestoreWithoutSessionNeedsLogin(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestParseAuthOptionsFormats(t *testing.T) {
+	flat := []byte(`{"trustedPhoneNumbers":[{"id":1,"numberWithDialCode":"+7 ••• 12"}],"authenticationType":"hsa2"}`)
+	nested := []byte(`{"phoneNumberVerification":{"trustedPhoneNumbers":[{"id":2,"numberWithDialCode":"+1 ••• 34"}]},"noTrustedDevices":false}`)
+	if ph, sum := parseAuthOptions(flat); len(ph) != 1 || ph[0].ID != 1 || strings.Contains(sum, "12") {
+		t.Fatalf("flat: %v %q", ph, sum)
+	}
+	if ph, sum := parseAuthOptions(nested); len(ph) != 1 || ph[0].ID != 2 || strings.Contains(sum, "34") {
+		t.Fatalf("nested: %v %q", ph, sum)
+	}
+	if ph, _ := parseAuthOptions([]byte("<html>")); ph != nil {
+		t.Fatal("html must give no phones")
+	}
+}

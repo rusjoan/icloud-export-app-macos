@@ -133,6 +133,7 @@ func (s *Server) handler(addr string) http.Handler {
 	api("POST /api/login", s.login)
 	api("POST /api/2fa", s.verify2FA)
 	api("POST /api/2fa/sms", s.sendSMS)
+	api("POST /api/2fa/resend", s.resendCode)
 	api("POST /api/logout", s.logout)
 	api("GET /api/albums", s.listAlbums)
 	api("POST /api/pick-folder", s.pickFolder)
@@ -386,6 +387,14 @@ func (s *Server) sendSMS(w http.ResponseWriter, r *http.Request) (any, error) {
 	ctx, cancel := context.WithTimeout(r.Context(), authTimeout)
 	defer cancel()
 	return map[string]bool{"ok": true}, s.sess.SendSMS(ctx, req.PhoneID)
+}
+
+func (s *Server) resendCode(w http.ResponseWriter, r *http.Request) (any, error) {
+	ctx, cancel := context.WithTimeout(r.Context(), authTimeout)
+	defer cancel()
+	err := s.sess.ResendCode(ctx)
+	log.Printf("2fa resend: %v", errOrOK(err))
+	return map[string]bool{"ok": true}, err
 }
 
 func errOrOK(err error) string {
