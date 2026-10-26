@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>iCloud Export</title>
+    <script>
+      // тема по системной настройке
+      const m = matchMedia('(prefers-color-scheme: dark)')
+      const apply = () => document.documentElement.setAttribute('data-bs-theme', m.matches ? 'dark' : 'light')
+      apply(); m.addEventListener('change', apply)
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

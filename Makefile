@@ -19,7 +19,7 @@ app: web bin
 	@echo "built $(APP)"
 
 web:
-	$(DOCKER_NODE) sh -c 'npm ci --no-audit --no-fund && npm run build'
+	$(DOCKER_NODE) sh -c 'npm ci --no-audit --no-fund && OUT_DIR=/out npm run build && touch /out/.gitkeep'
 
 bin:
 	$(DOCKER_GO) $(DARWIN_ENV) go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o dist/icloud-export ./cmd/icloud-export

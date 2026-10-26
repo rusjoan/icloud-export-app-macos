@@ -15,6 +15,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -139,6 +140,8 @@ func (s *Server) handler(addr string) http.Handler {
 	api("POST /api/export", s.startExport)
 	api("POST /api/export/{action}", s.controlExport)
 	api("POST /api/exiftool/install", s.installExifTool)
+	api("POST /api/reveal", s.reveal)
+	api("POST /api/open-url", s.openURL)
 
 	sub, _ := fs.Sub(dist, "dist")
 	files := http.FileServerFS(sub)
@@ -229,11 +232,47 @@ func (s *Server) state() stateDTO {
 	if s.authState == "2fa" {
 		st.Phones = s.sess.Phones()
 	}
+	if s.engine != nil && s.authState == "ok" && s.engine.Progress().Phase == export.PhaseNeedLogin {
+		st.Auth = "none"
+	}
 	if s.engine != nil {
 		p := s.engine.Progress()
 		st.Export = &p
 	}
 	return st
+}
+
+// reveal открывает папку текущей выгрузки в Finder.
+func (s *Server) reveal(w http.ResponseWriter, r *http.Request) (any, error) {
+	s.mu.Lock()
+	e := s.engine
+	s.mu.Unlock()
+	if e == nil {
+		return nil, badRequest("Выгрузка не запускалась")
+	}
+	return map[string]bool{"ok": true}, exec.Command("open", e.Progress().Dest).Run()
+}
+
+// openURL открывает ссылку в браузере по умолчанию (WKWebView не открывает target=_blank).
+func (s *Server) openURL(w http.ResponseWriter, r *http.Request) (any, error) {
+	var req struct{ URL string }
+	if err := decode(r, &req); err != nil {
+		return nil, err
+	}
+	u, err := url.Parse(req.URL)
+	if err != nil || u.Scheme != "https" || !allowedHost(u.Hostname()) {
+		return nil, badRequest("ссылка не разрешена")
+	}
+	return map[string]bool{"ok": true}, exec.Command("open", u.String()).Run()
+}
+
+func allowedHost(h string) bool {
+	for _, d := range []string{"apple.com", "brew.sh"} {
+		if h == d || strings.HasSuffix(h, "."+d) {
+			return true
+		}
+	}
+	return false
 }
 
 // events — SSE: раз в 700 мс полное состояние (его немного, так проще и надёжнее).

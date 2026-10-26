@@ -11,10 +11,10 @@ import (
 	"icloud-export/internal/web"
 )
 
-func runApp(ctx context.Context, sess *icloud.Session, browser bool) error {
+func runApp(ctx context.Context, sess *icloud.Session, browser, serve bool) error {
 	srv := web.New(ctx, sess)
 	srv.Version = version
-	if !browser {
+	if !browser && !serve {
 		srv.Picker = macwindow.PickFolder
 	}
 	url, err := srv.Listen()
@@ -26,9 +26,11 @@ func runApp(ctx context.Context, sess *icloud.Session, browser bool) error {
 		_ = sess.Save()
 		os.Exit(0)
 	}
-	if browser {
+	if browser || serve {
 		fmt.Println("Интерфейс:", url)
-		_ = exec.Command("open", url).Run()
+		if browser {
+			_ = exec.Command("open", url).Run()
+		}
 		<-ctx.Done()
 		quit()
 	}
