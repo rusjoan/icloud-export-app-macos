@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"icloud-export/internal/icloud"
-	"icloud-export/internal/meta"
+	"github.com/rusjoan/icloud-export-app-macos/internal/icloud"
+	"github.com/rusjoan/icloud-export-app-macos/internal/meta"
 )
 
 // Реальный exiftool меняет файл; повторный запуск всё равно ничего не качает.

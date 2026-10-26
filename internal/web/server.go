@@ -23,9 +23,9 @@ import (
 	"sync"
 	"time"
 
-	"icloud-export/internal/export"
-	"icloud-export/internal/icloud"
-	"icloud-export/internal/meta"
+	"github.com/rusjoan/icloud-export-app-macos/internal/export"
+	"github.com/rusjoan/icloud-export-app-macos/internal/icloud"
+	"github.com/rusjoan/icloud-export-app-macos/internal/meta"
 )
 
 //go:embed all:dist

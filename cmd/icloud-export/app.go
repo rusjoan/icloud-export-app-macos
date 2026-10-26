@@ -6,9 +6,9 @@ import (
 	"os"
 	"os/exec"
 
-	"icloud-export/internal/icloud"
-	"icloud-export/internal/ui/macwindow"
-	"icloud-export/internal/web"
+	"github.com/rusjoan/icloud-export-app-macos/internal/icloud"
+	"github.com/rusjoan/icloud-export-app-macos/internal/ui/macwindow"
+	"github.com/rusjoan/icloud-export-app-macos/internal/web"
 )
 
 func runApp(ctx context.Context, sess *icloud.Session, browser, serve bool) error {

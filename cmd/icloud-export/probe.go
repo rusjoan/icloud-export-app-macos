@@ -10,7 +10,7 @@ import (
 
 	"golang.org/x/term"
 
-	"icloud-export/internal/icloud"
+	"github.com/rusjoan/icloud-export-app-macos/internal/icloud"
 )
 
 // probe — проверка входа и доступа к альбомам из терминала, без UI.

@@ -1,4 +1,4 @@
-module icloud-export
+module github.com/rusjoan/icloud-export-app-macos
 
 go 1.27.3
 

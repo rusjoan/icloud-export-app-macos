@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode"
 
-	"icloud-export/internal/icloud"
+	"github.com/rusjoan/icloud-export-app-macos/internal/icloud"
 )
 
 type Layout string

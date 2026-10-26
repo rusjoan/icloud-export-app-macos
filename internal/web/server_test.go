@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"icloud-export/internal/icloud"
+	"github.com/rusjoan/icloud-export-app-macos/internal/icloud"
 )
 
 func newTestServer(t *testing.T) (*Server, http.Handler) {

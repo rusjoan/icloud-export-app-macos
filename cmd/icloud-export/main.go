@@ -10,7 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 
-	"icloud-export/internal/icloud"
+	"github.com/rusjoan/icloud-export-app-macos/internal/icloud"
 )
 
 var version = "dev"

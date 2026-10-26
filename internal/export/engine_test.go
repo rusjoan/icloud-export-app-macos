@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"icloud-export/internal/icloud"
-	"icloud-export/internal/meta"
-	"icloud-export/internal/state"
+	"github.com/rusjoan/icloud-export-app-macos/internal/icloud"
+	"github.com/rusjoan/icloud-export-app-macos/internal/meta"
+	"github.com/rusjoan/icloud-export-app-macos/internal/state"
 )
 
 type fakeSource struct {
