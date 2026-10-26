@@ -9,9 +9,17 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
-const zone = "PrimarySync"
+const primaryZone = "PrimarySync"
+
+// Library — медиатека: личная (PrimarySync) или общая (SharedSync-…).
+type Library struct {
+	Zone   string         `json:"zone"`
+	Shared bool           `json:"shared"`
+	zoneID map[string]any // как его отдал CloudKit (с владельцем и типом зоны)
+}
 
 // ErrWebAccessDisabled — фото недоступны через веб (обычно включена ADP).
 var ErrWebAccessDisabled = errors.New("iCloud Photos недоступны через веб. Если включена «Расширенная защита данных», " +
@@ -19,8 +27,9 @@ var ErrWebAccessDisabled = errors.New("iCloud Photos недоступны чер
 
 // Photos — клиент CloudKit-базы com.apple.photos.cloud.
 type Photos struct {
-	s        *Session
-	endpoint string
+	s         *Session
+	endpoint  string
+	libraries []Library
 }
 
 func NewPhotos(ctx context.Context, s *Session) (*Photos, error) {
@@ -32,21 +41,80 @@ func NewPhotos(ctx context.Context, s *Session) (*Photos, error) {
 		return nil, ErrWebAccessDisabled
 	}
 	p := &Photos{s: s, endpoint: strings.TrimRight(acc.PhotosURL, "/") + "/database/1/com.apple.photos.cloud/production/private"}
+	libs, err := p.discoverLibraries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, lib := range libs {
+		ready, err := p.indexed(ctx, lib)
+		if err != nil {
+			return nil, err
+		}
+		switch {
+		case ready:
+			p.libraries = append(p.libraries, lib)
+		case !lib.Shared:
+			return nil, errors.New("iCloud ещё индексирует медиатеку, попробуйте позже")
+		}
+		// общая медиатека ещё индексируется — просто не показываем её
+	}
+	return p, nil
+}
+
+// Libraries — доступные медиатеки (личная первой).
+func (p *Photos) Libraries() []Library { return append([]Library(nil), p.libraries...) }
+
+// discoverLibraries находит личную и общие медиатеки среди зон базы.
+func (p *Photos) discoverLibraries(ctx context.Context) ([]Library, error) {
+	var resp struct {
+		Zones []struct {
+			ZoneID  map[string]any `json:"zoneID"`
+			Deleted bool           `json:"deleted"`
+		} `json:"zones"`
+	}
+	if err := p.post(ctx, "/changes/database", map[string]any{}, &resp); err != nil {
+		return nil, err
+	}
+	primary := Library{Zone: primaryZone, zoneID: map[string]any{"zoneName": primaryZone}}
+	var shared []Library
+	for _, z := range resp.Zones {
+		name, _ := z.ZoneID["zoneName"].(string)
+		switch {
+		case z.Deleted:
+		case name == primaryZone:
+			primary.zoneID = z.ZoneID
+		case strings.HasPrefix(name, "SharedSync-"):
+			shared = append(shared, Library{Zone: name, Shared: true, zoneID: z.ZoneID})
+		}
+	}
+	return append([]Library{primary}, shared...), nil
+}
+
+func (p *Photos) indexed(ctx context.Context, lib Library) (bool, error) {
 	var resp struct {
 		Records []ckRecord `json:"records"`
 	}
 	if err := p.post(ctx, "/records/query", map[string]any{
 		"query":  map[string]any{"recordType": "CheckIndexingState"},
-		"zoneID": map[string]any{"zoneName": zone},
+		"zoneID": lib.zoneID,
 	}, &resp); err != nil {
-		return nil, err
+		return false, err
 	}
 	if len(resp.Records) > 0 {
 		if st := resp.Records[0].str("state"); st != "" && st != "FINISHED" {
-			return nil, errors.New("iCloud ещё индексирует медиатеку, попробуйте позже")
+			return false, nil
 		}
 	}
-	return p, nil
+	return true, nil
+}
+
+func (p *Photos) zoneID(zone string) map[string]any {
+	for _, l := range p.libraries {
+		if l.Zone == zone {
+			return l.zoneID
+		}
+	}
+	return map[string]any{"zoneName": zone}
 }
 
 type smartDef struct {
@@ -68,11 +136,35 @@ var smartAlbums = []smartDef{
 	{"deleted", "Недавно удалённые", "Recently Deleted", "CPLAssetDeletedByExpungedDate", "CPLAssetAndMasterDeletedByExpungedDate", "", KindDeleted},
 }
 
-// Albums возвращает смарт-альбомы и пользовательские альбомы с количеством файлов.
+// SharedLibraryKeyword — ключевое слово для файлов из общей медиатеки.
+const SharedLibraryKeyword = "Shared Library"
+
+// Albums возвращает альбомы всех медиатек с количеством файлов.
 func (p *Photos) Albums(ctx context.Context) ([]Album, error) {
 	var out []Album
+	for _, lib := range p.libraries {
+		albums, err := p.libraryAlbums(ctx, lib)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, albums...)
+	}
+	if err := p.fillCounts(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (p *Photos) libraryAlbums(ctx context.Context, lib Library) ([]Album, error) {
+	var out []Album
+	// у общей медиатеки свои ID, чтобы не путать с одноимёнными альбомами личной
+	prefix, libKeyword := "", ""
+	if lib.Shared {
+		prefix, libKeyword = lib.Zone+"/", SharedLibraryKeyword
+	}
 	for _, d := range smartAlbums {
-		a := Album{ID: "smart:" + d.id, Name: d.name, Kind: d.kind, Keyword: d.keyword, listType: d.listType, objType: d.objType}
+		a := Album{ID: prefix + "smart:" + d.id, Name: d.name, Kind: d.kind, Keyword: d.keyword, Library: lib.Zone,
+			Shared: lib.Shared, LibraryKeyword: libKeyword, listType: d.listType, objType: d.objType}
 		if d.filter != "" {
 			a.filters = []map[string]any{eqFilter("smartAlbum", "STRING", d.filter)}
 		}
@@ -83,7 +175,7 @@ func (p *Photos) Albums(ctx context.Context) ([]Album, error) {
 	for {
 		body := map[string]any{
 			"query":  map[string]any{"recordType": "CPLAlbumByPositionLive"},
-			"zoneID": map[string]any{"zoneName": zone},
+			"zoneID": lib.zoneID,
 		}
 		if marker != nil {
 			body["continuationMarker"] = marker
@@ -104,9 +196,12 @@ func (p *Photos) Albums(ctx context.Context) ([]Album, error) {
 			if name == "" {
 				name = "Без названия"
 			}
-			a := Album{ID: r.RecordName, Name: name, Keyword: name, Kind: KindUser, ParentID: r.str("parentId")}
+			a := Album{ID: prefix + r.RecordName, Name: name, Keyword: name, Kind: KindUser, ParentID: r.str("parentId"),
+				Library: lib.Zone, Shared: lib.Shared, LibraryKeyword: libKeyword}
 			if a.ParentID == "----Root-Folder----" {
 				a.ParentID = ""
+			} else if a.ParentID != "" {
+				a.ParentID = prefix + a.ParentID
 			}
 			if r.num("albumType") == 3 {
 				a.Kind = KindFolder
@@ -121,9 +216,6 @@ func (p *Photos) Albums(ctx context.Context) ([]Album, error) {
 			break
 		}
 		marker = resp.ContinuationMarker
-	}
-	if err := p.fillCounts(ctx, out); err != nil {
-		return nil, err
 	}
 	return out, nil
 }
@@ -147,7 +239,7 @@ func (p *Photos) fillCounts(ctx context.Context, albums []Album) error {
 				},
 			},
 			"zoneWide": true,
-			"zoneID":   map[string]any{"zoneName": zone},
+			"zoneID":   p.zoneID(a.Library),
 		})
 	}
 	for start := 0; start < len(batch); start += 50 {
@@ -187,7 +279,7 @@ func (p *Photos) Assets(ctx context.Context, album Album, fn func(Asset) error) 
 		if err := p.post(ctx, "/records/query", map[string]any{
 			"query":        map[string]any{"recordType": album.listType, "filterBy": filters},
 			"resultsLimit": 200,
-			"zoneID":       map[string]any{"zoneName": zone},
+			"zoneID":       p.zoneID(album.Library),
 		}, &resp); err != nil {
 			return err
 		}
@@ -215,7 +307,9 @@ func (p *Photos) Assets(ctx context.Context, album Album, fn func(Asset) error) 
 			if !ok {
 				continue
 			}
-			if err := fn(parseAsset(m, a)); err != nil {
+			asset := parseAsset(m, a)
+			asset.Zone = album.Library
+			if err := fn(asset); err != nil {
 				return err
 			}
 		}
@@ -229,7 +323,7 @@ func (p *Photos) Refresh(ctx context.Context, a Asset) (Asset, error) {
 	}
 	if err := p.post(ctx, "/records/lookup", map[string]any{
 		"records": []map[string]any{{"recordName": a.MasterID}, {"recordName": a.ID}},
-		"zoneID":  map[string]any{"zoneName": zone},
+		"zoneID":  p.zoneID(a.Zone),
 	}, &resp); err != nil {
 		return a, err
 	}
@@ -245,7 +339,9 @@ func (p *Photos) Refresh(ctx context.Context, a Asset) (Asset, error) {
 	if master == nil || asset == nil || master.ServerErrorCode != "" || asset.ServerErrorCode != "" {
 		return a, fmt.Errorf("запись %s больше не доступна в iCloud", a.ID)
 	}
-	return parseAsset(master, asset), nil
+	fresh := parseAsset(master, asset)
+	fresh.Zone = a.Zone
+	return fresh, nil
 }
 
 func eqFilter(field, typ string, value any) map[string]any {
@@ -267,10 +363,13 @@ func (p *Photos) post(ctx context.Context, path string, body, out any) error {
 			return err
 		}
 		p.s.WebHeaders(req)
+		start := time.Now()
 		resp, err := p.s.HTTP().Do(req)
 		if err != nil {
+			Logf("cloudkit POST %s: %v", path, err)
 			return err
 		}
+		Logf("cloudkit POST %s → %d (%s)", path, resp.StatusCode, time.Since(start).Round(time.Millisecond))
 		raw, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 		resp.Body.Close()
 		if err != nil {

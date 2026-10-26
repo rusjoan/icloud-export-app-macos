@@ -15,8 +15,12 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
+
+// Logf — журнал запросов (по умолчанию выключен). Пароли, токены и тела не пишутся.
+var Logf = func(format string, args ...any) {}
 
 const (
 	defaultAuthURL  = "https://idmsa.apple.com/appleauth/auth"
@@ -75,6 +79,19 @@ type Session struct {
 	st      persisted
 	account *Account
 	phones  []Phone
+
+	// снимок для интерфейса: читается без s.mu, пока идёт долгий вход
+	pub atomic.Pointer[publicInfo]
+}
+
+type publicInfo struct {
+	appleID string
+	phones  []Phone
+}
+
+// publish обновляет снимок; вызывается под s.mu.
+func (s *Session) publish() {
+	s.pub.Store(&publicInfo{appleID: s.st.AppleID, phones: append([]Phone(nil), s.phones...)})
 }
 
 // NewSession загружает сохранённую сессию из path (если файл есть).
@@ -87,6 +104,7 @@ func NewSession(path string) *Session {
 		s.st.ClientID = newClientID()
 	}
 	s.jar = NewJar(s.st.Cookies)
+	s.publish()
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.ResponseHeaderTimeout = 90 * time.Second
 	tr.MaxIdleConnsPerHost = 16
@@ -98,11 +116,7 @@ func NewSession(path string) *Session {
 // HTTP — клиент с cookies сессии (для CloudKit и загрузок).
 func (s *Session) HTTP() *http.Client { return s.http }
 
-func (s *Session) AppleID() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.st.AppleID
-}
+func (s *Session) AppleID() string { return s.pub.Load().appleID }
 
 // Account возвращает данные аккаунта после успешного входа, иначе nil.
 func (s *Session) Account() *Account {
@@ -151,6 +165,8 @@ func (s *Session) Login(ctx context.Context, appleID, password string) error {
 	}
 	s.st.AppleID = appleID
 	s.account = nil
+	s.phones = nil
+	s.publish()
 
 	c, err := newSRPClient(appleID)
 	if err != nil {
@@ -228,11 +244,7 @@ func (s *Session) Login(ctx context.Context, appleID, password string) error {
 }
 
 // Phones — доверенные номера (заполняется после ErrNeed2FA).
-func (s *Session) Phones() []Phone {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return append([]Phone(nil), s.phones...)
-}
+func (s *Session) Phones() []Phone { return append([]Phone(nil), s.pub.Load().phones...) }
 
 // SendSMS просит Apple прислать код на доверенный номер.
 func (s *Session) SendSMS(ctx context.Context, phoneID int) error {
@@ -299,6 +311,8 @@ func (s *Session) Logout() error {
 	s.st = persisted{ClientID: newClientID()}
 	s.jar.Clear()
 	s.account = nil
+	s.phones = nil
+	s.publish()
 	if err := os.Remove(s.path); err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -346,6 +360,7 @@ func (s *Session) requestCodePush(ctx context.Context) {
 	}
 	if json.Unmarshal(resp.body, &body) == nil {
 		s.phones = body.TrustedPhoneNumbers
+		s.publish()
 	}
 }
 
@@ -440,10 +455,13 @@ func (s *Session) webHeaders(req *http.Request) {
 }
 
 func (s *Session) do(req *http.Request) (*apiResp, error) {
+	start := time.Now()
 	resp, err := s.http.Do(req)
 	if err != nil {
+		Logf("apple %s %s%s: %v (%s)", req.Method, req.URL.Host, req.URL.Path, err, time.Since(start).Round(time.Millisecond))
 		return nil, err
 	}
+	Logf("apple %s %s%s → %d (%s)", req.Method, req.URL.Host, req.URL.Path, resp.StatusCode, time.Since(start).Round(time.Millisecond))
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if err != nil {

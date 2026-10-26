@@ -2,11 +2,17 @@
 const token = new URLSearchParams(location.search).get('t') || ''
 
 export async function api(path, { method = 'GET', body } = {}) {
-  const res = await fetch(path, {
-    method,
-    headers: { 'X-Token': token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-  })
+  let res
+  try {
+    res = await fetch(path, {
+      method,
+      headers: { 'X-Token': token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(120_000),
+    })
+  } catch (e) {
+    throw new Error(e.name === 'TimeoutError' ? 'Нет ответа от приложения — подробности в ~/Library/Logs/icloud-export.log' : e.message)
+  }
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
   return data

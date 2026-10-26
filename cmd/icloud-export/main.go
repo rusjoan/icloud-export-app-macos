@@ -4,6 +4,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -22,6 +24,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
+	setupLog()
+	log.Printf("icloud-export %s запущен", version)
+	icloud.Logf = log.Printf
 	sess := icloud.NewSession(filepath.Join(appSupportDir(), "session.json"))
 
 	var err error
@@ -37,6 +42,22 @@ func main() {
 		fmt.Fprintln(os.Stderr, "ошибка:", err)
 		os.Exit(1)
 	}
+}
+
+// setupLog пишет журнал в ~/Library/Logs/icloud-export.log (и в stderr).
+func setupLog() {
+	home, _ := os.UserHomeDir()
+	dir := filepath.Join(home, "Library", "Logs")
+	_ = os.MkdirAll(dir, 0o755)
+	path := filepath.Join(dir, "icloud-export.log")
+	if fi, err := os.Stat(path); err == nil && fi.Size() > 5<<20 {
+		_ = os.Rename(path, path+".1")
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	log.SetOutput(io.MultiWriter(os.Stderr, f))
 }
 
 func appSupportDir() string {

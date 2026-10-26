@@ -157,9 +157,30 @@ func (s *Server) handler(addr string) http.Handler {
 			http.Error(w, "bad host", http.StatusForbidden)
 			return
 		}
-		mux.ServeHTTP(w, r)
+		if !strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/api/events" || r.URL.Path == "/api/state" {
+			mux.ServeHTTP(w, r)
+			return
+		}
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: 200}
+		log.Printf("ui %s %s …", r.Method, r.URL.Path)
+		mux.ServeHTTP(rec, r)
+		log.Printf("ui %s %s → %d (%s)", r.Method, r.URL.Path, rec.status, time.Since(start).Round(time.Millisecond))
 	})
 }
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+// authTimeout — сколько ждём Apple при входе, прежде чем показать ошибку.
+const authTimeout = 90 * time.Second
 
 func (s *Server) authorized(r *http.Request) bool {
 	t := r.Header.Get("X-Token")
@@ -307,7 +328,13 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) (any, error) {
 	if strings.TrimSpace(req.AppleID) == "" || req.Password == "" {
 		return nil, badRequest("Введите Apple ID и пароль")
 	}
-	err := s.sess.Login(r.Context(), req.AppleID, req.Password)
+	ctx, cancel := context.WithTimeout(r.Context(), authTimeout)
+	defer cancel()
+	err := s.sess.Login(ctx, req.AppleID, req.Password)
+	if ctx.Err() == context.DeadlineExceeded {
+		err = &icloud.AuthError{Msg: "Apple не ответила за 90 секунд, попробуйте ещё раз"}
+	}
+	log.Printf("login: %v", errOrOK(err))
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch {
@@ -338,7 +365,11 @@ func (s *Server) verify2FA(w http.ResponseWriter, r *http.Request) (any, error) 
 	if err := decode(r, &req); err != nil {
 		return nil, err
 	}
-	if err := s.sess.Verify2FA(r.Context(), req.Code, req.PhoneID); err != nil {
+	ctx, cancel := context.WithTimeout(r.Context(), authTimeout)
+	defer cancel()
+	err := s.sess.Verify2FA(ctx, req.Code, req.PhoneID)
+	log.Printf("2fa: %v", errOrOK(err))
+	if err != nil {
 		return nil, err
 	}
 	s.mu.Lock()
@@ -352,7 +383,16 @@ func (s *Server) sendSMS(w http.ResponseWriter, r *http.Request) (any, error) {
 	if err := decode(r, &req); err != nil {
 		return nil, err
 	}
-	return map[string]bool{"ok": true}, s.sess.SendSMS(r.Context(), req.PhoneID)
+	ctx, cancel := context.WithTimeout(r.Context(), authTimeout)
+	defer cancel()
+	return map[string]bool{"ok": true}, s.sess.SendSMS(ctx, req.PhoneID)
+}
+
+func errOrOK(err error) string {
+	if err == nil {
+		return "ok"
+	}
+	return err.Error()
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) (any, error) {

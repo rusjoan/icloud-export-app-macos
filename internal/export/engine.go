@@ -281,8 +281,10 @@ func (e *Engine) scan(ctx context.Context) ([]*item, error) {
 					}
 					e.mu.Unlock()
 				}
-				if al.Keyword != "" && !slices.Contains(it.keywords, al.Keyword) {
-					it.keywords = append(it.keywords, al.Keyword)
+				for _, k := range []string{al.Keyword, al.LibraryKeyword} {
+					if k != "" && !slices.Contains(it.keywords, k) {
+						it.keywords = append(it.keywords, k)
+					}
 				}
 				return ctx.Err()
 			})

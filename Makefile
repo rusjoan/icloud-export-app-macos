@@ -25,7 +25,7 @@ bin:
 	$(DOCKER_GO) $(DARWIN_ENV) go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o dist/icloud-export ./cmd/icloud-export
 
 test:
-	$(DOCKER_GO) sh -c 'gofmt -l -w cmd internal build && go vet ./... && go test -race ./...'
+	$(DOCKER_GO) sh -c 'gofmt -l -w cmd internal build && go vet ./... && go test -race -timeout 120s ./...'
 
 # darwin-специфичные тесты (birthtime): собираем в контейнере, запускаем на хосте
 test-darwin:

@@ -27,8 +27,12 @@ type Album struct {
 	Kind     AlbumKind `json:"kind"`
 	ParentID string    `json:"parentId,omitempty"`
 	Count    int       `json:"count"`
+	Library  string    `json:"library"` // зона медиатеки
+	Shared   bool      `json:"shared"`  // общая медиатека
 	// Keyword — что писать в ключевые слова файла (пусто — не писать).
 	Keyword string `json:"-"`
+	// LibraryKeyword — ключевое слово медиатеки (у общей — «Shared Library»).
+	LibraryKeyword string `json:"-"`
 
 	listType string
 	objType  string
@@ -67,6 +71,7 @@ type Asset struct {
 	Edited    *Resource // рендер правок (фото или видео)
 	EditLive  *Resource // рендер правок видео Live Photo
 	ChangeTag string    // меняется при любом изменении записи
+	Zone      string    // зона медиатеки, из которой пришла запись
 }
 
 func (a *Asset) IsVideo() bool { return isVideoType(a.ItemType) }

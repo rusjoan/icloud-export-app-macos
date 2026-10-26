@@ -38,9 +38,11 @@
   onMount(() => load())
 
   const groups = $derived.by(() => {
-    const smart = albums.filter((a) => a.kind === 'smart')
-    const special = albums.filter((a) => a.kind === 'hidden' || a.kind === 'deleted')
-    const user = albums.filter((a) => a.kind === 'user' || a.kind === 'folder')
+    const own = albums.filter((a) => !a.shared)
+    const smart = own.filter((a) => a.kind === 'smart')
+    const special = own.filter((a) => a.kind === 'hidden' || a.kind === 'deleted')
+    const user = own.filter((a) => a.kind === 'user' || a.kind === 'folder')
+    const shared = albums.filter((a) => a.shared)
     // дерево пользовательских альбомов: папки и вложенность
     const children = new Map()
     for (const a of user) {
@@ -56,7 +58,7 @@
       }
     }
     walk('', 0)
-    return { smart, special, user: tree }
+    return { smart, special, user: tree, shared }
   })
 
   const selectable = $derived(albums.filter((a) => a.kind !== 'folder'))
@@ -125,7 +127,7 @@
     {:else}
       <input class="form-check-input me-2 mt-0" type="checkbox" checked={selected.has(a.id)} onclick={(e) => e.stopPropagation()}
         onchange={() => toggle(a.id)} />
-      <i class="bi {a.kind === 'hidden' ? 'bi-eye-slash' : a.kind === 'deleted' ? 'bi-trash3' : a.kind === 'smart' ? 'bi-images' : 'bi-collection'} me-2 text-body-secondary"></i>
+      <i class="bi {a.kind === 'hidden' ? 'bi-eye-slash' : a.kind === 'deleted' ? 'bi-trash3' : a.shared ? 'bi-people' : a.kind === 'smart' ? 'bi-images' : 'bi-collection'} me-2 text-body-secondary"></i>
       <span>{a.name}</span>
       <span class="ms-auto badge text-bg-light border">{a.count}</span>
     {/if}
@@ -159,6 +161,7 @@
       {@render group('Медиатека', groups.smart)}
       {@render group('Скрытые и удалённые', groups.special)}
       {@render group('Мои альбомы', groups.user)}
+      {@render group('Общая медиатека', groups.shared)}
     </div>
     <div class="card-footer small text-body-secondary bg-body">
       Выбрано: {selectable.filter((a) => selected.has(a.id)).length} {plural(selectable.filter((a) => selected.has(a.id)).length, 'альбом', 'альбома', 'альбомов')},
