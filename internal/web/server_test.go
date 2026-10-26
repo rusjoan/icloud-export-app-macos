@@ -82,3 +82,14 @@ func TestDestInfoExpandsHome(t *testing.T) {
 		t.Fatalf("dest: %d %s", rec.Code, rec.Body)
 	}
 }
+
+func TestStatePhonesIsArrayNotNull(t *testing.T) {
+	s, h := newTestServer(t)
+	s.mu.Lock()
+	s.authState = "2fa"
+	s.mu.Unlock()
+	rec := do(h, "GET", "/api/state", "127.0.0.1:5555", s.token, "")
+	if !strings.Contains(rec.Body.String(), `"phones":[]`) {
+		t.Fatalf("phones must be [] for UI: %s", rec.Body)
+	}
+}

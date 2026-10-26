@@ -1,7 +1,8 @@
 <script>
   import { post } from './api.js'
 
-  let { phones = [] } = $props()
+  let { phones } = $props()
+  const list = $derived(phones ?? [])
   let code = $state('')
   let phoneId = $state(0) // 0 — код с доверенного устройства
   let busy = $state(false)
@@ -58,11 +59,11 @@
           </button>
         </form>
 
-        {#if phones.length}
+        {#if list.length}
           <hr />
           <div class="small text-body-secondary mb-2">Нет устройства под рукой? Получите код по SMS:</div>
           <div class="d-flex flex-wrap justify-content-center gap-2">
-            {#each phones as ph (ph.id)}
+            {#each list as ph (ph.id)}
               <button class="btn btn-sm btn-outline-secondary" disabled={busy} onclick={() => sms(ph.id)}>
                 <i class="bi bi-chat-dots me-1"></i>{ph.numberWithDialCode}
               </button>

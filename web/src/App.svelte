@@ -8,6 +8,12 @@
 
   let st = $state(null)
   let connected = $state(false)
+  let uiError = $state('')
+
+  // сбой отрисовки не должен выглядеть как вечный спиннер
+  const showError = (e) => (uiError = String(e?.reason?.message || e?.message || e?.reason || e))
+  window.addEventListener('error', showError)
+  window.addEventListener('unhandledrejection', showError)
 
   onMount(() => {
     // внешние ссылки — в браузер по умолчанию (окно приложения их не открывает)
@@ -55,6 +61,12 @@
 </header>
 
 <main class="container py-4" style="max-width: 960px">
+  {#if uiError}
+    <div class="alert alert-danger selectable">
+      Ошибка интерфейса: {uiError}. Перезапустите приложение; если повторится — пришлите
+      <span class="mono">~/Library/Logs/icloud-export.log</span> и этот текст.
+    </div>
+  {/if}
   {#if !connected}
     <div class="text-center text-body-secondary py-5">
       <div class="spinner-border mb-3"></div>

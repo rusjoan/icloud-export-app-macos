@@ -244,7 +244,8 @@ func (s *Session) Login(ctx context.Context, appleID, password string) error {
 }
 
 // Phones — доверенные номера (заполняется после ErrNeed2FA).
-func (s *Session) Phones() []Phone { return append([]Phone(nil), s.pub.Load().phones...) }
+// Phones — доверенные номера; всегда не nil (в JSON — [], а не null).
+func (s *Session) Phones() []Phone { return append([]Phone{}, s.pub.Load().phones...) }
 
 // SendSMS просит Apple прислать код на доверенный номер.
 func (s *Session) SendSMS(ctx context.Context, phoneID int) error {
