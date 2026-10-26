@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -86,7 +87,11 @@ func NewSession(path string) *Session {
 		s.st.ClientID = newClientID()
 	}
 	s.jar = NewJar(s.st.Cookies)
-	s.http = &http.Client{Jar: s.jar, Timeout: 0}
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.ResponseHeaderTimeout = 90 * time.Second
+	tr.MaxIdleConnsPerHost = 16
+	// без общего таймаута: большие видео качаются долго
+	s.http = &http.Client{Jar: s.jar, Transport: tr}
 	return s
 }
 

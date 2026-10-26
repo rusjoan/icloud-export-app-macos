@@ -415,6 +415,7 @@ func (e *Engine) process(ctx context.Context, it *item) (skipped bool, err error
 			return false, err
 		}
 		old.ChangeTag, old.Sidecar = a.ChangeTag, side
+		e.recordSizes(&old)
 		e.addBytes(old.Size + old.LiveSize)
 		return true, e.index.Put(a.ID, old)
 	}
@@ -443,6 +444,7 @@ func (e *Engine) process(ctx context.Context, it *item) (skipped bool, err error
 	if entry.Sidecar, err = e.applyMeta(mainRel, liveRel, info); err != nil {
 		return false, err
 	}
+	e.recordSizes(&entry)
 	// прежняя версия этого же ассета под другим именем больше не нужна
 	if had {
 		for _, p := range []string{old.Path, old.LivePath, old.Sidecar} {
@@ -486,6 +488,19 @@ func (e *Engine) applyMeta(mainRel, liveRel string, info meta.Info) (string, err
 }
 
 func (e *Engine) abs(rel string) string { return filepath.Join(e.opts.Dest, filepath.FromSlash(rel)) }
+
+// recordSizes запоминает размеры уже после записи метаданных: exiftool меняет файл,
+// а при следующем запуске размер сверяется с тем, что лежит на диске.
+func (e *Engine) recordSizes(en *state.Entry) {
+	if fi, err := os.Stat(e.abs(en.Path)); err == nil {
+		en.Size = fi.Size()
+	}
+	if en.LivePath != "" {
+		if fi, err := os.Stat(e.abs(en.LivePath)); err == nil {
+			en.LiveSize = fi.Size()
+		}
+	}
+}
 
 func (e *Engine) exists(rel string, size int64) bool {
 	fi, err := os.Stat(e.abs(rel))

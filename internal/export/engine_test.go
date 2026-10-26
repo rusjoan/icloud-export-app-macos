@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -84,7 +85,7 @@ func (fs *fileServer) res(path, body, uti string) *icloud.Resource {
 	fs.mu.Lock()
 	fs.files[path] = body
 	fs.mu.Unlock()
-	return &icloud.Resource{URL: fs.URL + path, Size: int64(len(body)), FileType: uti, Checksum: "ck-" + body}
+	return &icloud.Resource{URL: fs.URL + path, Size: int64(len(body)), FileType: uti, Checksum: "ck-" + path + "-" + strconv.Itoa(len(body))}
 }
 
 var june = time.Date(2024, 6, 10, 18, 30, 0, 0, time.UTC)
@@ -312,5 +313,40 @@ func TestCancelStops(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dest, state.FileName)); err != nil {
 		t.Fatal("index must be saved on cancel")
+	}
+}
+
+func TestResumeAfterMetadataChangesFileSize(t *testing.T) {
+	srv := newFileServer(t)
+	dest := t.TempDir()
+	a := icloud.Asset{ID: "A", Filename: "a.JPG", ItemType: "public.jpeg", Date: june, Original: srv.res("/a", "abc", "public.jpeg"), ChangeTag: "1"}
+	src := &fakeSource{albums: map[string][]icloud.Asset{"x": {a}}}
+	run(t, src, srv, dest, LayoutFlat, icloud.Album{ID: "x"})
+
+	// как будто exiftool записал метаданные внутрь файла
+	p := filepath.Join(dest, "a.JPG")
+	_ = os.WriteFile(p, []byte("abc+exif-metadata"), 0o644)
+	ix, _ := state.Open(dest)
+	en, _ := ix.Get("A")
+	en.Size = int64(len("abc+exif-metadata"))
+	_ = ix.Put("A", en)
+	_ = ix.Save()
+
+	hits := srv.hits.Load()
+	pr := run(t, src, srv, dest, LayoutFlat, icloud.Album{ID: "x"})
+	if pr.Skipped != 1 || srv.hits.Load() != hits {
+		t.Fatalf("file with embedded metadata re-downloaded: %+v", pr)
+	}
+}
+
+func TestRecordSizesUsesSizeOnDisk(t *testing.T) {
+	dest := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dest, "a.JPG"), []byte("0123456789"), 0o644)
+	_ = os.WriteFile(filepath.Join(dest, "a.MOV"), []byte("01234"), 0o644)
+	e := &Engine{opts: Options{Dest: dest}}
+	en := state.Entry{Path: "a.JPG", LivePath: "a.MOV", Size: 3, LiveSize: 1}
+	e.recordSizes(&en)
+	if en.Size != 10 || en.LiveSize != 5 {
+		t.Fatalf("sizes = %d/%d", en.Size, en.LiveSize)
 	}
 }

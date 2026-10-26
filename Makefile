@@ -1,5 +1,5 @@
 # Всё собирается в Docker: на хосте нужен только docker.
-GO_IMAGE   := golang:1.26
+GO_IMAGE   := golang:1.27.3
 NODE_IMAGE := node:22-alpine
 APP        := dist/icloud-export.app
 VERSION    ?= 0.1.0
@@ -29,8 +29,9 @@ test:
 
 # darwin-специфичные тесты (birthtime): собираем в контейнере, запускаем на хосте
 test-darwin:
-	$(DOCKER_GO) $(DARWIN_ENV) go test -c -o dist/meta-darwin.test ./internal/meta
-	./dist/meta-darwin.test -test.v
+	$(DOCKER_GO) sh -c '$(DARWIN_ENV) go test -c -o dist/meta-darwin.test ./internal/meta && $(DARWIN_ENV) go test -c -o dist/export-darwin.test ./internal/export'
+	./dist/meta-darwin.test
+	./dist/export-darwin.test -test.run Darwin -test.v
 
 tidy:
 	$(DOCKER_GO) go mod tidy
