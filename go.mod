@@ -7,4 +7,7 @@ require (
 	howett.net/plist v1.0.1
 )
 
-require golang.org/x/sys v0.49.0
+require (
+	github.com/ebitengine/purego v0.11.2
+	golang.org/x/sys v0.49.0
+)

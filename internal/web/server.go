@@ -92,6 +92,9 @@ func (s *Server) Listen() (string, error) {
 	return "http://" + addr + "/?t=" + s.token, nil
 }
 
+// Close останавливает выгрузку (индекс при этом сохраняется).
+func (s *Server) Close() { s.shutdown() }
+
 func (s *Server) shutdown() {
 	s.mu.Lock()
 	e := s.engine
