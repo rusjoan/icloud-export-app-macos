@@ -194,11 +194,11 @@
         <div class="form-label fw-semibold">Раскладка</div>
         <div class="form-check">
           <input class="form-check-input" type="radio" id="l-date" value="date" bind:group={layout} />
-          <label class="form-check-label" for="l-date">По датам — <span class="mono">2024/06/IMG_1234.HEIC</span></label>
+          <label class="form-check-label" for="l-date">По датам — <span class="mono">2024/06/2024-06-10 21.30.05 IMG_1234.HEIC</span></label>
         </div>
         <div class="form-check">
           <input class="form-check-input" type="radio" id="l-flat" value="flat" bind:group={layout} />
-          <label class="form-check-label" for="l-flat">Всё в одну папку — <span class="mono">IMG_1234.HEIC</span></label>
+          <label class="form-check-label" for="l-flat">Всё в одну папку — <span class="mono">2024-06-10 21.30.05 IMG_1234.HEIC</span></label>
         </div>
       </div>
       <div class="col-sm-4">

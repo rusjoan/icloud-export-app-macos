@@ -48,7 +48,7 @@ func TestDarwinRealExifToolResume(t *testing.T) {
 	if p := runWith(); p.Downloaded != 1 || p.Failed != 0 {
 		t.Fatalf("first run: %+v", p)
 	}
-	p := filepath.Join(dest, "2024/06/IMG_1.JPG")
+	p := filepath.Join(dest, "2024/06/2024-06-10 21.30.00 IMG_1.JPG")
 	if _, err := os.Stat(p + ".xmp"); err == nil {
 		t.Fatal("sidecar must not be written when exiftool succeeded")
 	}

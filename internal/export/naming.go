@@ -44,12 +44,17 @@ func dirFor(a icloud.Asset, layout Layout) string {
 	return a.LocalDate().Format("2006/01")
 }
 
-// baseName — имя файла без расширения.
+// baseName — имя файла без расширения: «2024-06-10 21.30.05 IMG_1234».
+// Дата съёмки (в поясе снимка) впереди — по имени файлы идут хронологически,
+// исходное имя сохраняется, поэтому совпадения почти исключены.
 func baseName(a icloud.Asset) string {
 	name := strings.TrimSuffix(a.Filename, filepath.Ext(a.Filename))
 	name = sanitize(name)
 	if name == "" {
 		name = "IMG_" + shortID(a.ID)
+	}
+	if !a.Date.IsZero() {
+		name = a.LocalDate().Format("2006-01-02 15.04.05") + " " + name
 	}
 	return name
 }
@@ -110,11 +115,8 @@ func candidates(a icloud.Asset, layout Layout, sel selection) func(i int) (strin
 	}
 	return func(i int) (string, string) {
 		b := base
-		switch {
-		case i == 1:
-			b += "_" + shortID(a.ID)
-		case i > 1:
-			b += "_" + shortID(a.ID) + "_" + strconv.Itoa(i)
+		if i > 0 {
+			b += "_" + strconv.Itoa(i+1)
 		}
 		m := path.Join(dir, b+mainExt)
 		if liveExt == "" {

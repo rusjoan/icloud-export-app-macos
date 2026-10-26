@@ -129,28 +129,28 @@ func TestExportByDateThenResumeSkipsEverything(t *testing.T) {
 	if p.Phase != PhaseDone || p.Total != 3 || p.Downloaded != 3 || p.Failed != 0 {
 		t.Fatalf("progress = %+v", p)
 	}
-	if got := readFile(t, filepath.Join(dest, "2024/06/IMG_0001.HEIC")); got != "heic" {
+	if got := readFile(t, filepath.Join(dest, "2024/06/2024-06-10 21.30.00 IMG_0001.HEIC")); got != "heic" {
 		t.Fatal("live photo still wrong")
 	}
-	if got := readFile(t, filepath.Join(dest, "2024/06/IMG_0001.MOV")); got != "mov1" {
+	if got := readFile(t, filepath.Join(dest, "2024/06/2024-06-10 21.30.00 IMG_0001.MOV")); got != "mov1" {
 		t.Fatal("live photo video wrong")
 	}
 	// правки вместо оригинала, расширение по типу рендера
-	if got := readFile(t, filepath.Join(dest, "2024/07/IMG_0002.JPG")); got != "edited2" {
+	if got := readFile(t, filepath.Join(dest, "2024/07/2024-07-10 18.30.00 IMG_0002.JPG")); got != "edited2" {
 		t.Fatal("edited version expected")
 	}
-	if _, err := os.Stat(filepath.Join(dest, "2024/07/IMG_0002.HEIC")); err == nil {
+	if _, err := os.Stat(filepath.Join(dest, "2024/07/2024-07-10 18.30.00 IMG_0002.HEIC")); err == nil {
 		t.Fatal("original must not be saved when edited exists")
 	}
 	if _, err := os.Stat(filepath.Join(dest, "unknown/IMG_0003.MOV")); err != nil {
 		t.Fatal("undated asset must go to unknown/")
 	}
 	// ассет из двух альбомов: оба ключевых слова, один файл
-	x := readFile(t, filepath.Join(dest, "2024/07/IMG_0002.JPG.xmp"))
+	x := readFile(t, filepath.Join(dest, "2024/07/2024-07-10 18.30.00 IMG_0002.JPG.xmp"))
 	if !strings.Contains(x, "<rdf:li>Поездка</rdf:li>") || strings.Count(x, "<rdf:li>Hidden</rdf:li>") != 1 {
 		t.Fatalf("keywords in sidecar wrong:\n%s", x)
 	}
-	fi, _ := os.Stat(filepath.Join(dest, "2024/06/IMG_0001.HEIC"))
+	fi, _ := os.Stat(filepath.Join(dest, "2024/06/2024-06-10 21.30.00 IMG_0001.HEIC"))
 	if !fi.ModTime().Equal(june) {
 		t.Fatalf("mtime = %v", fi.ModTime())
 	}
@@ -180,7 +180,7 @@ func TestCollisionsAndForeignFiles(t *testing.T) {
 	if readFile(t, filepath.Join(dest, "IMG_0001.JPG")) != "mine" {
 		t.Fatal("foreign file overwritten")
 	}
-	got := []string{readFile(t, filepath.Join(dest, "IMG_0001_AAA111.JPG")), readFile(t, filepath.Join(dest, "IMG_0001_BBB222.JPG"))}
+	got := []string{readFile(t, filepath.Join(dest, "IMG_0001_2.JPG")), readFile(t, filepath.Join(dest, "IMG_0001_3.JPG"))}
 	if !slices.Equal(got, []string{"a", "b"}) {
 		t.Fatalf("collision names wrong: %v", got)
 	}
@@ -316,6 +316,39 @@ func TestCancelStops(t *testing.T) {
 	}
 }
 
+func TestDatedNamesSortChronologically(t *testing.T) {
+	srv := newFileServer(t)
+	dest := t.TempDir()
+	mk := func(id, name string, at time.Time) icloud.Asset {
+		return icloud.Asset{ID: id, Filename: name, ItemType: "public.jpeg", Date: at, Original: srv.res("/"+id, id, "public.jpeg")}
+	}
+	// одинаковые имена с разных камер и одна и та же секунда
+	list := []icloud.Asset{
+		mk("c", "IMG_0001.JPG", june.Add(2*time.Hour)),
+		mk("a", "IMG_0001.JPG", june),
+		mk("b", "IMG_0001.JPG", june),
+		mk("d", "DSC_0001.JPG", june.Add(time.Minute)),
+	}
+	src := &fakeSource{albums: map[string][]icloud.Asset{"x": list}}
+	if p := run(t, src, srv, dest, LayoutFlat, icloud.Album{ID: "x"}); p.Downloaded != 4 {
+		t.Fatalf("progress = %+v", p)
+	}
+	entries, _ := os.ReadDir(dest)
+	var names []string
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), ".") && !strings.HasSuffix(e.Name(), ".xmp") {
+			names = append(names, e.Name())
+		}
+	}
+	want := []string{
+		"2024-06-10 18.30.00 IMG_0001.JPG", "2024-06-10 18.30.00 IMG_0001_2.JPG",
+		"2024-06-10 18.31.00 DSC_0001.JPG", "2024-06-10 20.30.00 IMG_0001.JPG",
+	}
+	if !slices.Equal(names, want) {
+		t.Fatalf("names = %q", names)
+	}
+}
+
 func TestResumeAfterMetadataChangesFileSize(t *testing.T) {
 	srv := newFileServer(t)
 	dest := t.TempDir()
@@ -324,10 +357,10 @@ func TestResumeAfterMetadataChangesFileSize(t *testing.T) {
 	run(t, src, srv, dest, LayoutFlat, icloud.Album{ID: "x"})
 
 	// как будто exiftool записал метаданные внутрь файла
-	p := filepath.Join(dest, "a.JPG")
-	_ = os.WriteFile(p, []byte("abc+exif-metadata"), 0o644)
 	ix, _ := state.Open(dest)
 	en, _ := ix.Get("A")
+	p := filepath.Join(dest, en.Path)
+	_ = os.WriteFile(p, []byte("abc+exif-metadata"), 0o644)
 	en.Size = int64(len("abc+exif-metadata"))
 	_ = ix.Put("A", en)
 	_ = ix.Save()
