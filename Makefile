@@ -12,7 +12,7 @@ DOCKER_NODE = docker run --rm -v "$(CURDIR)/web":/web -v "$(CURDIR)/internal/web
 
 DARWIN_ENV = env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64
 
-.PHONY: app web bin test test-darwin tidy clean
+.PHONY: app web bin linux test test-darwin tidy clean
 
 app: web bin
 	$(DOCKER_GO) sh -c 'go run ./build/mkapp -bin dist/icloud-export -out $(APP) -version $(VERSION)'
@@ -26,6 +26,11 @@ bin:
 
 test:
 	$(DOCKER_GO) sh -c 'gofmt -l -w cmd internal build && go vet ./... && go test -race -timeout 120s ./...'
+
+# Linux x86_64: интерфейс в браузере, даты файлов — только mtime
+linux: web
+	$(DOCKER_GO) env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o dist/icloud-export-linux-amd64 ./cmd/icloud-export
+	@echo "built dist/icloud-export-linux-amd64"
 
 # darwin-специфичные тесты (birthtime): собираем в контейнере, запускаем на хосте
 test-darwin:

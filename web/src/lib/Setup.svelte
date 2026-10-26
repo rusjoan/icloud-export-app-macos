@@ -211,7 +211,7 @@
   </div>
 </div>
 
-<ExifTool ex={st.exiftool} />
+<ExifTool ex={st.exiftool} os={st.os} />
 
 {#if startError}<div class="alert alert-danger selectable">{startError}</div>{/if}
 

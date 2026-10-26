@@ -93,3 +93,11 @@ func TestStatePhonesIsArrayNotNull(t *testing.T) {
 		t.Fatalf("phones must be [] for UI: %s", rec.Body)
 	}
 }
+
+func TestListenOnlyLoopback(t *testing.T) {
+	s, _ := newTestServer(t)
+	s.Addr = "0.0.0.0:0"
+	if _, err := s.Listen(); err == nil || !strings.Contains(err.Error(), "SSH") {
+		t.Fatalf("non-loopback listen must be refused: %v", err)
+	}
+}

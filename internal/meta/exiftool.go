@@ -14,7 +14,7 @@ import (
 
 // Приложение, запущенное из Finder, получает PATH без Homebrew, поэтому
 // кроме PATH смотрим стандартные места.
-var searchDirs = []string{"/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"}
+var searchDirs = []string{"/opt/homebrew/bin", "/usr/local/bin", "/home/linuxbrew/.linuxbrew/bin", "/usr/bin"}
 
 // FindTool ищет исполняемый файл в PATH и стандартных каталогах Homebrew.
 func FindTool(name string) string {

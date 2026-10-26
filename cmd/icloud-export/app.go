@@ -5,16 +5,24 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 
 	"github.com/rusjoan/icloud-export-app-macos/internal/icloud"
 	"github.com/rusjoan/icloud-export-app-macos/internal/ui/macwindow"
 	"github.com/rusjoan/icloud-export-app-macos/internal/web"
 )
 
-func runApp(ctx context.Context, sess *icloud.Session, browser, serve bool) error {
+func runApp(ctx context.Context, sess *icloud.Session, browser, serve bool, addr string) error {
+	native := runtime.GOOS == "darwin" && !browser && !serve
+	if runtime.GOOS != "darwin" && !serve {
+		// собственного окна вне macOS нет — открываем в браузере, если есть графика
+		browser = os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
+		serve = !browser
+	}
 	srv := web.New(ctx, sess)
 	srv.Version = version
-	if !browser && !serve {
+	srv.Addr = addr
+	if native {
 		srv.Picker = macwindow.PickFolder
 	}
 	url, err := srv.Listen()
@@ -26,10 +34,10 @@ func runApp(ctx context.Context, sess *icloud.Session, browser, serve bool) erro
 		_ = sess.Save()
 		os.Exit(0)
 	}
-	if browser || serve {
+	if !native {
 		fmt.Println("Интерфейс:", url)
 		if browser {
-			_ = exec.Command("open", url).Run()
+			_ = exec.Command(web.Opener(), url).Run()
 		}
 		<-ctx.Done()
 		quit()

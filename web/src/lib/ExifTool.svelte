@@ -1,7 +1,7 @@
 <script>
   import { post } from './api.js'
 
-  let { ex } = $props()
+  let { ex, os = 'darwin' } = $props()
   let error = $state('')
 
   async function install() {
@@ -28,7 +28,7 @@
         {:else}
           <div class="small text-body-secondary mb-2">
             exiftool не найден. Выгрузка будет работать, но метаданные из iCloud лягут рядом с файлами в XMP-сайдкарах
-            (<span class="mono">IMG_1234.HEIC.xmp</span>), а не внутрь файлов. Даты файлов выставляются в любом случае.
+            (<span class="mono">IMG_1234.HEIC.xmp</span>), а не внутрь файлов. Даты файлов выставляются в любом случае{os === 'darwin' ? '' : ' (на Linux — только дата изменения)'}.
           </div>
           {#if ex.installing}
             <div class="small"><span class="spinner-border spinner-border-sm me-2"></span>Устанавливаю через Homebrew…</div>
@@ -36,10 +36,16 @@
             <button class="btn btn-sm btn-outline-primary" onclick={install}>
               <i class="bi bi-box-arrow-in-down me-1"></i>Установить через Homebrew
             </button>
-          {:else}
+          {:else if os === 'darwin'}
             <div class="small">
               Установите <a href="https://brew.sh" target="_blank" rel="noreferrer">Homebrew</a>, затем в Терминале:
               <span class="mono selectable">brew install exiftool</span> — и перезапустите приложение.
+            </div>
+          {:else}
+            <div class="small">
+              Установите пакетом и перезапустите приложение:
+              <span class="mono selectable">sudo apt install libimage-exiftool-perl</span> (Debian/Ubuntu) или
+              <span class="mono selectable">sudo dnf install perl-Image-ExifTool</span> (Fedora).
             </div>
           {/if}
         {/if}

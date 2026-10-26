@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,7 @@ type FolderPicker func() (string, error)
 
 type Server struct {
 	Version string
+	Addr    string       // адрес прослушивания (по умолчанию 127.0.0.1:0)
 	Picker  FolderPicker // nil — в браузерном режиме
 
 	sess  *icloud.Session
@@ -74,11 +76,18 @@ func New(ctx context.Context, sess *icloud.Session) *Server {
 
 // Listen поднимает сервер на 127.0.0.1:<свободный порт> и возвращает URL интерфейса.
 func (s *Server) Listen() (string, error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	addr := s.Addr
+	if addr == "" {
+		addr = "127.0.0.1:0"
+	}
+	if host, _, err := net.SplitHostPort(addr); err != nil || host != "127.0.0.1" {
+		return "", errors.New("интерфейс слушает только 127.0.0.1 — для доступа с другой машины используйте SSH-туннель")
+	}
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return "", err
 	}
-	addr := ln.Addr().String()
+	addr = ln.Addr().String()
 	srv := &http.Server{Handler: s.handler(addr), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -241,6 +250,7 @@ type stateDTO struct {
 	ExifTool     exifState        `json:"exiftool"`
 	Export       *export.Progress `json:"export"`
 	NativePicker bool             `json:"nativePicker"`
+	OS           string           `json:"os"`
 }
 
 func (s *Server) state() stateDTO {
@@ -248,6 +258,7 @@ func (s *Server) state() stateDTO {
 	defer s.mu.Unlock()
 	st := stateDTO{
 		Version: s.Version, Auth: s.authState, AppleID: s.sess.AppleID(), NativePicker: s.Picker != nil,
+		Phones: []icloud.Phone{}, OS: runtime.GOOS,
 		ExifTool: exifState{Path: s.exifPath, Version: s.exifVer, Brew: meta.FindTool("brew") != "",
 			Installing: s.installing, Log: append([]string{}, s.installLog...), Error: s.installErr},
 	}
@@ -272,7 +283,7 @@ func (s *Server) reveal(w http.ResponseWriter, r *http.Request) (any, error) {
 	if e == nil {
 		return nil, badRequest("Выгрузка не запускалась")
 	}
-	return map[string]bool{"ok": true}, exec.Command("open", e.Progress().Dest).Run()
+	return map[string]bool{"ok": true}, exec.Command(Opener(), e.Progress().Dest).Run()
 }
 
 // openURL открывает ссылку в браузере по умолчанию (WKWebView не открывает target=_blank).
@@ -285,7 +296,15 @@ func (s *Server) openURL(w http.ResponseWriter, r *http.Request) (any, error) {
 	if err != nil || u.Scheme != "https" || !allowedHost(u.Hostname()) {
 		return nil, badRequest("ссылка не разрешена")
 	}
-	return map[string]bool{"ok": true}, exec.Command("open", u.String()).Run()
+	return map[string]bool{"ok": true}, exec.Command(Opener(), u.String()).Run()
+}
+
+// Opener — команда, открывающая файл или ссылку в системе.
+func Opener() string {
+	if runtime.GOOS == "darwin" {
+		return "open"
+	}
+	return "xdg-open"
 }
 
 func allowedHost(h string) bool {
